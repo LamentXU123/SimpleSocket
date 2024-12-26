@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 # @FileName  :main.py
 # @Time      :2023/11/11 12:14:11
-# @Author    :D0WE1L1N
+# @Author    :LamentXU
 from socket import *
 import os
 import errors
@@ -122,7 +122,7 @@ class SimpleTCP():
         '''
         padding_length = block_size - (len(data) % block_size)
         if padding_length == 0:
-            padding_length = block_size  # 如果数据长度为16的倍数，额外填充一个完整块
+            padding_length = block_size
         padding = bytes([padding_length]) * padding_length
         padded_data = data + padding
         return padded_data

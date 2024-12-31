@@ -3,3 +3,5 @@
 apis.md
 test*.py
 __init__.py
+/dist/
+/package_pysimplesocket*/

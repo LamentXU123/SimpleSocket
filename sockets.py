@@ -3,10 +3,10 @@
 # @Time      :2023/11/11 12:14:11
 # @Author    :LamentXU
 from socket import *
-import os
 import errors
 
 from pathlib import Path
+from os import path, listdir
 from time import sleep
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
@@ -65,7 +65,7 @@ class SimpleTCP():
         return address
     def connect(self, Address: tuple) -> None:
         '''
-        Conect with information exchange and key exchange
+        Connect with information exchange and key exchange
         '''
         self.s.connect(Address)
         info_dict_len = int(self.s.recv(2).decode(encoding=self.default_encoder))
@@ -186,7 +186,7 @@ class SimpleTCP():
         THE LOCATION MUST BE A FILE, NOT A DIR
         {self.default_message_len} bytes are read and sent in a single pass
         '''
-        if os.path.exists(file_location) and not os.path.isdir(file_location):
+        if path.exists(file_location) and not path.isdir(file_location):
             with open(file_location, 'rb') as file:
                 self.send_large(file.read())
             self.send_large('EOF')  # Must to use send large, but this is bad
@@ -209,17 +209,17 @@ class SimpleTCP():
         return data
 
     def send_dir(self, src_path: str) -> None:
-        target_path = os.path.basename(src_path)
+        target_path = path.basename(src_path)
 
         def send_file_in_dir(src_path: str, target_path: str):
-            if not os.path.exists(src_path):
+            if not path.exists(src_path):
                 raise FileExistsError('Path {} does not exists'.format(src_path))
-            filelist_src = os.listdir(src_path)  # Used to return a file name and directory name
+            filelist_src = listdir(src_path)  # Used to return a file name and directory name
             for file in filelist_src:  # Go through all the files or folders
-                src_path_read_new = os.path.join(
-                    os.path.abspath(src_path), file)
-                target_path_write_new = os.path.join(target_path, file)
-                if os.path.isdir(src_path_read_new):  # Determine whether the read path is a directory folder, and perform recursion if it is a folder
+                src_path_read_new = path.join(
+                    path.abspath(src_path), file)
+                target_path_write_new = path.join(target_path, file)
+                if path.isdir(src_path_read_new):  # Determine whether the read path is a directory folder, and perform recursion if it is a folder
                     send_file_in_dir(src_path_read_new,
                                      target_path_write_new)  # recursion
                 else:  # If it is a file, send it
@@ -264,8 +264,8 @@ class SimpleTCP():
         while True:
             typeofmessage = self.recv(is_decode=True)
             if typeofmessage == 'FILE':
-                recv_target_path = os.path.join(target_path, self.recv())
-                self.savefile(os.path.dirname(recv_target_path), os.path.basename(
+                recv_target_path = path.join(target_path, self.recv())
+                self.savefile(path.dirname(recv_target_path), path.basename(
                     recv_target_path), is_overwrite=is_overwrite)
             elif typeofmessage == 'END':
                 return True
@@ -318,12 +318,12 @@ class SimpleTCP():
         is_overwrite : Overwrite a file when a file with the same name appears, otherwise raise an error
         '''
         if filename != None:
-            file_location = os.path.join(savepath, filename)
+            file_location = path.join(savepath, filename)
         else:
             file_location = savepath
-            filename = os.path.basename(savepath)
-            savepath = os.path.dirname(savepath)
-        if os.path.exists(file_location) and not is_overwrite:
+            filename = path.basename(savepath)
+            savepath = path.dirname(savepath)
+        if path.exists(file_location) and not is_overwrite:
             raise FileExistsError(
                 'Already has a file named {} in {}'.format(file_location, savepath))
         Path(savepath).mkdir(parents=True, exist_ok=True)

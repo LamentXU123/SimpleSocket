@@ -8,3 +8,7 @@ Definate all the errors
 class MessageLengthError(Exception):
     def __init__(self, message) -> None:
         self.message = message
+
+class PasswordError(Exception):
+    def __init__(self, message) -> None:
+        self.message = message

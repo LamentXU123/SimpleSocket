@@ -20,13 +20,18 @@ class SimpleTCP():
     '''
 
     def __init__(self, family: AddressFamily = AF_INET, type: SocketKind = SOCK_STREAM
-                 , proto: int = -1, fileno: int = None, is_encrypted: bool = True, AES_key: bytes = None) -> None:
+                 , proto: int = -1, fileno: int = None, is_encrypted: bool = True, AES_key: bytes = None, password: bytes = None) -> None:
         '''
         is_encrypted: use encrypted connection, only for server
         AES_key: use a fixed AES_key, None for random, must be 16 bytes, only for server
+        password: A fixed password is acquired from the client (must smaller than be 100 bytes), if wrong, the connection will be closed
+            if password is set in server, every time a client connect, the client must send the same password back to the server to accept.
+            if password is set in client, every time you connect to the server, the password will be sent to the server to verify.
+            if password is None, no password will be used.
         self.Default_message_len: if in encrypted mode, the value must be a multiple of self.BLOCK_SIZE
         MAKE SURE THE DEFAULT_MESSAGE_LEN OF BOTH SERVER AND CLIENT ARE SAME, Or it could be a hassle
         '''
+        
         self.BLOCK_SIZE = 16 # block size of padding text which will be encrypted by AES
         # the block size must be a mutiple of 8
         self.default_encoder = 'utf8'  # the default encoder used in send and recv when the message is not bytes
@@ -39,22 +44,45 @@ class SimpleTCP():
         else:
             self.key, self.cipher_aes = None, None
         self.default_message_len = 1024 # length of some basic message, it's best not to go below 1024 bytes
+        if password == None:
+            self.password = None
+        else:
+            self.password = self.turn_to_bytes(password)
+            if len(password) > 100:
+                raise ValueError('The password is too long, it must be smaller than 100 bytes')
         self.s = socket(family, type, proto, fileno)  # main socket
-        # self.password = self.padding_packets(password, 20)[0]
     def accept(self) -> tuple:
         '''
-        Accept with information exchange and key exchange
+        Accept with information exchange and key exchange, return the address of the client
+        if the password from client is wrong or not set, raise PasswordError
         '''
         self.s, address = self.s.accept()
         if self.key == None:
             is_encrypted = False
         else:
             is_encrypted = True
+        if self.password == None:
+            has_password = False
+        else:
+            has_password = True
         info_dict = {
-            'is_encrypted' : is_encrypted}
+            'is_encrypted' : is_encrypted,
+            'has_password' : has_password}
         info_dict = dumps(info_dict).encode(encoding=self.default_encoder)
         self.s.send(self.turn_to_bytes(len(info_dict)))
         self.s.send(info_dict)
+        if has_password:
+            password_length = self.unpadding_packets(self.s.recv(3), -1)
+            if not password_length:
+                self.s.close()
+                raise errors.PasswordError(f'The client {address} does not send the password, the connection will be closed')
+            recv_password = self.s.recv(int(password_length.decode(encoding=self.default_encoder))) # the first byte is whether the password is aquired(1) or not(0), the rest is the password, the password is padded to 100 bytes
+            if recv_password != self.password or recv_password[0] == b'0':
+                self.s.send(b'0')
+                self.s.close()
+                raise errors.PasswordError(f'The password {recv_password} is wrong, the connection from {address} will be closed, you can restart the accept() function or put it in a while loop to keep accepting')
+            else:
+                self.s.send(b'1')
         if is_encrypted:
             public_key = self.s.recv(450)
             rsa_public_key = RSA.import_key(public_key)
@@ -66,11 +94,23 @@ class SimpleTCP():
     def connect(self, Address: tuple) -> None:
         '''
         Connect with information exchange and key exchange
+        if the password from client is wrong or not set, raise PasswordError
         '''
         self.s.connect(Address)
         info_dict_len = int(self.s.recv(2).decode(encoding=self.default_encoder))
         info_dict = self.s.recv(info_dict_len).decode(encoding=self.default_encoder)
         info = loads(info_dict)
+        if info['has_password'] == True:
+            if self.password == None:
+                self.s.send(b'   ') # send three space to tell the server that the password is not set
+                self.s.close()
+                raise errors.PasswordError('The server requires a password, please set it in the client or server')
+            self.s.send(str(len(self.password)).encode(encoding=self.default_encoder))
+            self.s.send(self.password)
+            password_confirm = self.s.recv(1)
+            if password_confirm != b'1':
+                self.s.close()
+                raise errors.PasswordError('The password is wrong, the connection will be closed')
         if info['is_encrypted'] == True:
             tmp_key = RSA.generate(2048)
             private_key = tmp_key.export_key()
@@ -89,7 +129,11 @@ class SimpleTCP():
         '''
         type_of_message = type(message)
         if type_of_message == str:
-            message = message.encode(encoding=self.default_encoder)
+            try:
+                message = message.encode(encoding=self.default_encoder)
+            except Exception as e:
+                raise TypeError(
+                    'Unexpected type "{}" of {} when encode it with {}, raw traceback: {}'.format(type_of_message, message, self.default_encoder, e))
         elif type_of_message == bytes:
             pass
         else:
